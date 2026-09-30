@@ -1,0 +1,26 @@
+name: Générer la vidéo
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Identifiant du job
+        required: true
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JOB: ${{ inputs.job }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier l'identifiant
+        run: '[[ "$JOB" =~ ^[a-f0-9]{12}$ ]]'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node render.js "jobs/$JOB"
+      - run: gh release create "video-$JOB" "jobs/$JOB/video.mp4" --title "Vidéo $JOB" --notes "Générée par Muslim Video Generator"

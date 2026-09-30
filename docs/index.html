@@ -1,0 +1,65 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muslim Video Generator</title>
+<style>
+:root{--bg:#f3efe4;--ink:#1c2b24;--g:#0f5c43;--gold:#b8892b;--line:#cfc7b0}
+@media(prefers-color-scheme:dark){:root{--bg:#10201a;--ink:#ece6d2;--g:#3fbf94;--gold:#e0b458;--line:#2c4a3e}}
+*{box-sizing:border-box}
+body{margin:auto;background:var(--bg);color:var(--ink);font:16px/1.5 Georgia,serif;padding:20px;max-width:560px}
+h1{font-size:30px;margin:8px 0 4px;color:var(--g)}
+p.s{margin:0 0 20px;opacity:.8}
+label{display:block;margin:14px 0 4px;font-weight:bold}
+input,textarea,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);font:inherit}
+textarea{min-height:80px}
+.r{display:flex;gap:10px;align-items:center;margin-top:12px}.r input{width:auto}
+button{margin-top:20px;width:100%;padding:14px;background:var(--g);color:var(--bg);border:0;border-radius:6px;font:bold 17px Georgia,serif}
+button:disabled{opacity:.5}
+details{border:1px solid var(--line);border-radius:6px;padding:8px 12px}
+#st{margin-top:20px;padding:14px;border:1px solid var(--gold);border-radius:6px;display:none}
+#st a{color:var(--g);font-weight:bold}
+</style></head><body>
+<h1>Muslim Video Generator</h1>
+<p class="s">Images, son et légendes assemblés en MP4 jusqu'à 45 minutes.</p>
+<form id="f">
+<details><summary>Connexion GitHub</summary>
+<label>Dépôt (nom/depot)</label><input id="repo" placeholder="moncompte/muslim-video-generator">
+<label>Jeton d'accès personnel</label><input id="tok" type="password"></details>
+<label>Images</label><input type="file" id="imgs" accept="image/*" multiple>
+<label>Audio : musique ou voix off (facultatif)</label><input type="file" id="aud" accept="audio/*">
+<label>Ou texte pour une voix off automatique</label><textarea id="voice"></textarea>
+<label>Langue de la voix</label><select id="lang"><option value="fr">Français</option><option value="ar">Arabe</option><option value="en">Anglais</option></select>
+<label>Sous-titres (une ligne par légende)</label><textarea id="cap"></textarea>
+<div class="r"><input type="checkbox" id="burn"><label for="burn" style="margin:0;font-weight:normal">Incruster les sous-titres dans l'image (plus lent)</label></div>
+<label>Durée (minutes, de 1 à 45)</label><input type="number" id="min" min="1" max="45" value="5">
+<button id="go">Générer la vidéo</button></form>
+<div id="st"></div>
+<script>
+const $=i=>document.getElementById(i),st=$('st'),go=$('go');
+try{$('repo').value=localStorage.repo||'';$('tok').value=localStorage.tok||''}catch(e){}
+const b64=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result.split(',')[1]);x.readAsDataURL(f)});
+const ext=f=>(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+const say=t=>{st.style.display='block';st.textContent=t};
+$('f').onsubmit=async e=>{e.preventDefault();go.disabled=true;
+ const repo=$('repo').value.trim(),tok=$('tok').value.trim();
+ if(!repo||!tok){say('Renseigne le dépôt et le jeton dans « Connexion GitHub ».');go.disabled=false;return}
+ try{localStorage.repo=repo;localStorage.tok=tok}catch(e){}
+ const gh=(p,m,body)=>fetch('https://api.github.com/repos/'+repo+p,{method:m||'GET',headers:{Authorization:'Bearer '+tok,Accept:'application/vnd.github+json'},body:body&&JSON.stringify(body)});
+ const put=async(p,c)=>{const r=await gh('/contents/'+p,'PUT',{message:'job',content:c});if(!r.ok)throw new Error('Envoi refusé ('+r.status+'), vérifie le jeton et le dépôt')};
+ const id=[...crypto.getRandomValues(new Uint8Array(6))].map(x=>x.toString(16).padStart(2,'0')).join('');
+ try{
+  const imgs=[...$('imgs').files];
+  for(let i=0;i<imgs.length;i++){say('Envoi des images ('+(i+1)+'/'+imgs.length+')…');await put(`jobs/${id}/images/${String(i).padStart(3,'0')}.${ext(imgs[i])}`,await b64(imgs[i]))}
+  const a=$('aud').files[0];
+  if(a){say('Envoi de l\'audio…');await put(`jobs/${id}/audio.${ext(a)}`,await b64(a))}
+  const o={minutes:+$('min').value,captions:$('cap').value,voice:$('voice').value,lang:$('lang').value,burn:$('burn').checked};
+  await put(`jobs/${id}/options.json`,btoa(unescape(encodeURIComponent(JSON.stringify(o)))));
+  say('Lancement de la génération…');
+  const d=await gh('/actions/workflows/generate.yml/dispatches','POST',{ref:'main',inputs:{job:id}});
+  if(!d.ok)throw new Error('Lancement refusé ('+d.status+'), vérifie le jeton et la branche main');
+  const t=setInterval(async()=>{
+   const r=await gh('/releases/tags/video-'+id);
+   if(r.ok){const j=await r.json();clearInterval(t);
+    st.innerHTML='Vidéo prête. <a href="'+j.assets[0].browser_download_url+'">Télécharger le MP4</a>';go.disabled=false}
+   else say('Génération en cours sur GitHub… la page se met à jour toute seule.')},10000);
+ }catch(x){say('Erreur : '+x.message);go.disabled=false}};
+</script></body></html>
